@@ -15,6 +15,7 @@ export default function Layout() {
     if (path.includes('/dashboard')) return 'Dashboard Overview';
     if (path.includes('/leads')) return 'Lead Pipeline';
     if (path.includes('/customers')) return 'Customer Directory';
+    if (path.includes('/analytics')) return 'Analytics Dashboard';
     if (path.includes('/settings')) return 'System Settings';
     return 'CRM Lite';
   };

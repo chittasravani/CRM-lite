@@ -5,7 +5,8 @@ import {
   Users, 
   Settings, 
   X,
-  Sparkles
+  Sparkles,
+  BarChart3
 } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 
@@ -16,6 +17,7 @@ export default function Sidebar({ isOpen, toggleSidebar }) {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Leads', href: '/leads', icon: Target, badge: leads.filter(l => l.status !== 'Won' && l.status !== 'Lost').length },
     { name: 'Customers', href: '/customers', icon: Users, badge: customers.length },
+    { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
 

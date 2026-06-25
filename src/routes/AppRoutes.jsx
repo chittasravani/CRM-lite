@@ -4,6 +4,7 @@ import Dashboard from '../pages/Dashboard';
 import Leads from '../pages/Leads';
 import Customers from '../pages/Customers';
 import Settings from '../pages/Settings';
+import Analytics from '../pages/Analytics';
 
 export default function AppRoutes() {
   return (
@@ -15,6 +16,7 @@ export default function AppRoutes() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="leads" element={<Leads />} />
         <Route path="customers" element={<Customers />} />
+        <Route path="analytics" element={<Analytics />} />
         <Route path="settings" element={<Settings />} />
         
         {/* Catch-all route redirects to dashboard */}
