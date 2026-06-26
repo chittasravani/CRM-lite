@@ -4,23 +4,26 @@
  * Handles missing fields and schema changes defensively.
  */
 
-// Helper: safe date parsing
+// ─── Internal Helpers ────────────────────────────────────────────
+
+/** Safe date parser – returns Date or null */
 const parseDate = (dateVal) => {
   if (!dateVal) return null;
   const parsed = new Date(dateVal);
   return isNaN(parsed.getTime()) ? null : parsed;
 };
 
-// Helper: distribute default owners if missing
+/** Distribute owners deterministically if missing */
 const getLeadOwner = (lead) => {
   if (lead.owner) return lead.owner;
-  // Fallback distribution for beautiful visualization
   const owners = ['Alex Rivera', 'Jessica Vance', 'Michael K.'];
-  const hash = lead.id ? lead.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) : 0;
+  const hash = lead.id
+    ? lead.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    : 0;
   return owners[hash % owners.length];
 };
 
-// Helper: map lead status
+/** Normalise status strings to canonical stage names */
 const mapLeadStatus = (status) => {
   if (!status) return 'New';
   const trimmed = status.trim();
@@ -29,7 +32,7 @@ const mapLeadStatus = (status) => {
   return trimmed;
 };
 
-// Helper: generate last 6 months with keys
+/** Build array of last‑6‑months metadata */
 const generateLast6MonthsKeys = () => {
   const months = [];
   const currentDate = new Date();
@@ -37,129 +40,132 @@ const generateLast6MonthsKeys = () => {
     const d = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
     const monthName = d.toLocaleString('default', { month: 'short' });
     const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    months.push({
-      name: monthName,
-      monthKey,
-      count: 0,
-      won: 0,
-      total: 0,
-      revenue: 0
-    });
+    months.push({ name: monthName, monthKey, count: 0, won: 0, total: 0, revenue: 0 });
   }
   return months;
 };
 
-// 1. Status Distribution
+// ─── Exported Analytics Functions ────────────────────────────────
+
+/**
+ * 1. Status Distribution
+ * Returns array of { name, value, percentage } for each pipeline stage.
+ */
 export const getStatusDistribution = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
   const stages = ['New', 'Contacted', 'Meeting Scheduled', 'Proposal Sent', 'Won', 'Lost'];
   const counts = stages.reduce((acc, s) => ({ ...acc, [s]: 0 }), {});
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead) return;
     const status = mapLeadStatus(lead.status);
-    if (counts[status] !== undefined) {
-      counts[status]++;
-    }
+    if (counts[status] !== undefined) counts[status]++;
   });
 
   const total = leads.length;
-  return stages.map(stage => ({
+  return stages.map((stage) => ({
     name: stage,
     value: counts[stage],
-    percentage: total > 0 ? Math.round((counts[stage] / total) * 100) : 0
+    percentage: total > 0 ? Math.round((counts[stage] / total) * 100) : 0,
   }));
 };
 
-// 2. Monthly Leads Created (Last 6 months)
+/**
+ * 2. Monthly Leads Created (Last 6 months)
+ */
 export const getMonthlyLeads = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
   const months = generateLast6MonthsKeys();
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead || !lead.createdAt) return;
     const key = lead.createdAt.substring(0, 7);
-    const m = months.find(item => item.monthKey === key);
+    const m = months.find((item) => item.monthKey === key);
     if (m) m.count++;
   });
 
-  return months.map(m => ({ name: m.name, count: m.count }));
+  return months.map((m) => ({ name: m.name, count: m.count }));
 };
 
-// 3. Monthly Conversion Rates (Won / Total per month)
+/**
+ * 3. Monthly Conversion Rate (Won / Total per month)
+ */
 export const getConversionByMonth = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
   const months = generateLast6MonthsKeys();
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead || !lead.createdAt) return;
     const key = lead.createdAt.substring(0, 7);
-    const m = months.find(item => item.monthKey === key);
+    const m = months.find((item) => item.monthKey === key);
     if (m) {
       m.total++;
       if (lead.status === 'Won') m.won++;
     }
   });
 
-  return months.map(m => ({
+  return months.map((m) => ({
     name: m.name,
-    rate: m.total > 0 ? Math.round((m.won / m.total) * 100) : 0
+    rate: m.total > 0 ? Math.round((m.won / m.total) * 100) : 0,
   }));
 };
 
-// 4. Won Revenue by Month (Last 6 months)
+/**
+ * 4. Revenue by Month (Won deals only)
+ */
 export const getRevenueByMonth = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
   const months = generateLast6MonthsKeys();
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead || !lead.createdAt || lead.status !== 'Won') return;
     const key = lead.createdAt.substring(0, 7);
-    const m = months.find(item => item.monthKey === key);
-    if (m) {
-      m.revenue += Number(lead.value) || 0;
-    }
+    const m = months.find((item) => item.monthKey === key);
+    if (m) m.revenue += Number(lead.value) || 0;
   });
 
-  return months.map(m => ({
-    name: m.name,
-    revenue: m.revenue
-  }));
+  return months.map((m) => ({ name: m.name, revenue: m.revenue }));
 };
 
-// 5. Pipeline Value (Sum of active leads: NOT Won, NOT Lost)
+/**
+ * 5. Pipeline Value (sum of active/open leads – NOT Won/Lost)
+ */
 export const getPipelineValue = (leads) => {
   if (!leads || !Array.isArray(leads)) return 0;
   return leads
-    .filter(lead => lead && lead.status !== 'Won' && lead.status !== 'Lost')
-    .reduce((sum, lead) => sum + (Number(lead.value) || 0), 0);
+    .filter((l) => l && l.status !== 'Won' && l.status !== 'Lost')
+    .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
 };
 
-// 6. Won Revenue (Sum of won values)
+/**
+ * 6. Won Revenue (sum of Won lead values)
+ */
 export const getWonRevenue = (leads) => {
   if (!leads || !Array.isArray(leads)) return 0;
   return leads
-    .filter(lead => lead && lead.status === 'Won')
-    .reduce((sum, lead) => sum + (Number(lead.value) || 0), 0);
+    .filter((l) => l && l.status === 'Won')
+    .reduce((sum, l) => sum + (Number(l.value) || 0), 0);
 };
 
-// 7. Average Sales Cycle (Days: wonAt - createdAt)
+/**
+ * 7. Average Sales Cycle in days (wonAt – createdAt)
+ */
 export const getAverageSalesCycle = (leads) => {
   if (!leads || !Array.isArray(leads)) return 0;
-  const wonLeads = leads.filter(lead => lead && lead.status === 'Won');
+  const wonLeads = leads.filter((l) => l && l.status === 'Won');
   if (wonLeads.length === 0) return 0;
 
   let totalDays = 0;
   let count = 0;
 
-  wonLeads.forEach(lead => {
+  wonLeads.forEach((lead) => {
     const created = parseDate(lead.createdAt);
-    // Fallback: if wonAt is missing, assume it was won 14 days after creation
-    const won = parseDate(lead.wonAt) || (created ? new Date(created.getTime() + 14 * 24 * 60 * 60 * 1000) : null);
-    
+    // Fallback: if wonAt is missing, assume won 14 days after creation
+    const won =
+      parseDate(lead.wonAt) ||
+      (created ? new Date(created.getTime() + 14 * 24 * 60 * 60 * 1000) : null);
     if (created && won) {
-      const diffTime = won.getTime() - created.getTime();
-      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      const diffDays = (won.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
       if (diffDays >= 0) {
         totalDays += diffDays;
         count++;
@@ -170,66 +176,69 @@ export const getAverageSalesCycle = (leads) => {
   return count > 0 ? Math.round(totalDays / count) : 14;
 };
 
-// 8. Lost Rate (Lost / Total * 100)
+/**
+ * 8. Lost Rate (Lost / Total × 100)
+ */
 export const getLostRate = (leads) => {
   if (!leads || !Array.isArray(leads)) return 0;
   const total = leads.length;
   if (total === 0) return 0;
-  const lost = leads.filter(lead => lead && lead.status === 'Lost').length;
+  const lost = leads.filter((l) => l && l.status === 'Lost').length;
   return Math.round((lost / total) * 100);
 };
 
-// 9. Lead Sources (Website, Referral, LinkedIn, Cold Call, Email Campaign, Other) sorted descending
+/**
+ * 9. Lead Source Stats
+ * Sources: Website, Referral, LinkedIn, Instagram, Ads, Cold Email
+ * Sorted descending by count.
+ */
 export const getLeadSourceStats = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
-  const sources = ['Website', 'Referral', 'LinkedIn', 'Cold Call', 'Email Campaign', 'Other'];
+  const sources = ['Website', 'Referral', 'LinkedIn', 'Instagram', 'Ads', 'Cold Email'];
   const counts = sources.reduce((acc, src) => ({ ...acc, [src]: 0 }), {});
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead || !lead.source) return;
     const source = lead.source.trim();
-    // Normalize source string matching
-    let matchedSource = 'Other';
-    if (source === 'Cold Outreach') {
-      matchedSource = 'Cold Call';
+    // Normalise legacy / variant source names
+    let matched = 'Website'; // default fallback
+    if (source === 'Cold Outreach' || source === 'Cold Call') {
+      matched = 'Cold Email';
+    } else if (source === 'Email Campaign') {
+      matched = 'Cold Email';
     } else if (sources.includes(source)) {
-      matchedSource = source;
+      matched = source;
     }
-    counts[matchedSource]++;
+    counts[matched]++;
   });
 
   const total = leads.length;
-
   return Object.keys(counts)
-    .map(name => ({
+    .map((name) => ({
       name,
       count: counts[name],
-      percentage: total > 0 ? Math.round((counts[name] / total) * 100) : 0
+      percentage: total > 0 ? Math.round((counts[name] / total) * 100) : 0,
     }))
-    .sort((a, b) => b.count - a.count); // sort descending
+    .sort((a, b) => b.count - a.count);
 };
 
-// 10. Funnel Data (New -> Contacted -> Meeting Scheduled -> Proposal Sent -> Won)
+/**
+ * 10. Funnel Data (cumulative: each stage counts leads that reached at‑least that stage)
+ */
 export const getFunnelData = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
-  
-  // Stages in progression
+
   const funnelStages = [
     { key: 'New', name: 'New' },
     { key: 'Contacted', name: 'Contacted' },
     { key: 'Meeting Scheduled', name: 'Meeting Scheduled' },
     { key: 'Proposal Sent', name: 'Proposal Sent' },
-    { key: 'Won', name: 'Won' }
+    { key: 'Won', name: 'Won' },
   ];
 
-  // Initialize stage tallies. Funnels represent leads who have AT LEAST reached this stage.
-  // E.g. a "Won" lead went through New, Contacted, Meeting Scheduled, Proposal Sent.
-  const stageCounts = funnelStages.map(stage => ({
-    name: stage.name,
-    count: 0
-  }));
+  const stageCounts = funnelStages.map((s) => ({ name: s.name, count: 0 }));
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead) return;
     const mapped = mapLeadStatus(lead.status);
 
@@ -254,73 +263,83 @@ export const getFunnelData = (leads) => {
       stageCounts[3].count++;
       stageCounts[4].count++;
     } else if (mapped === 'Lost') {
-      // Lost leads just count at the start (New)
       stageCounts[0].count++;
     }
   });
 
   const topValue = stageCounts[0].count;
 
-  return stageCounts.map(item => ({
-    ...item,
-    value: item.count, // funnels in Recharts often use value
-    percentage: topValue > 0 ? Math.round((item.count / topValue) * 100) : 0
-  }));
+  return stageCounts.map((item, idx) => {
+    const prevCount = idx === 0 ? topValue : stageCounts[idx - 1].count;
+    const dropOff = prevCount > 0 ? prevCount - item.count : 0;
+    return {
+      ...item,
+      value: item.count,
+      percentage: topValue > 0 ? Math.round((item.count / topValue) * 100) : 0,
+      dropOff,
+      dropOffPct: prevCount > 0 ? Math.round((dropOff / prevCount) * 100) : 0,
+    };
+  });
 };
 
-// 11. Sales Velocity: (Opportunities * Win Rate * Avg Deal Size) / Sales Cycle (Daily Value)
+/**
+ * 11. Sales Velocity
+ * Formula: (Opportunities × Win Rate × Avg Deal Size) / Sales Cycle
+ * Returns daily revenue velocity value.
+ */
 export const getSalesVelocity = (leads) => {
   if (!leads || !Array.isArray(leads)) return 0;
-  
-  // Opportunities: open/active leads
-  const openOpportunities = leads.filter(l => l && l.status !== 'Won' && l.status !== 'Lost').length;
-  
-  // Win rate: Won / Total
-  const wonLeads = leads.filter(l => l && l.status === 'Won');
-  const winRate = leads.length > 0 ? (wonLeads.length / leads.length) : 0;
-  
-  // Avg Deal Size: avg value of Won deals
+
+  const openOpps = leads.filter(
+    (l) => l && l.status !== 'Won' && l.status !== 'Lost'
+  ).length;
+  const wonLeads = leads.filter((l) => l && l.status === 'Won');
+  const winRate = leads.length > 0 ? wonLeads.length / leads.length : 0;
   const wonRevenue = getWonRevenue(leads);
-  const avgDealSize = wonLeads.length > 0 ? (wonRevenue / wonLeads.length) : 5000;
-  
-  // Avg Sales Cycle in days
+  const avgDealSize = wonLeads.length > 0 ? wonRevenue / wonLeads.length : 5000;
   const avgSalesCycle = getAverageSalesCycle(leads) || 14;
 
-  // Formula: (Open opportunities * Win Rate * Avg Deal Size) / Avg Sales Cycle Days
-  const velocity = (openOpportunities * winRate * avgDealSize) / avgSalesCycle;
+  const velocity = (openOpps * winRate * avgDealSize) / avgSalesCycle;
   return isNaN(velocity) || !isFinite(velocity) ? 0 : Math.round(velocity);
 };
 
-// 12. Revenue Forecast (Average of last 6 months, and confidence based on proposal ratio)
+/**
+ * 12. Revenue Forecast
+ * Average of last 6 months revenue + confidence based on proposal pipeline ratio.
+ */
 export const getForecastRevenue = (leads) => {
   if (!leads || !Array.isArray(leads)) return { forecast: 0, confidence: 85 };
-  
+
   const monthlyRev = getRevenueByMonth(leads);
   const totalRev = monthlyRev.reduce((sum, m) => sum + m.revenue, 0);
-  const avgRev = totalRev / 6; // average of last 6 months
+  const avgRev = totalRev / 6;
 
-  // Calculate a dynamic confidence percentage: ratio of leads in Proposal Sent to overall active leads
-  const activeLeads = leads.filter(l => l && l.status !== 'Won' && l.status !== 'Lost');
-  const proposalLeads = leads.filter(l => l && mapLeadStatus(l.status) === 'Proposal Sent');
-  
-  let confidence = 85; // baseline
+  const activeLeads = leads.filter(
+    (l) => l && l.status !== 'Won' && l.status !== 'Lost'
+  );
+  const proposalLeads = leads.filter(
+    (l) => l && mapLeadStatus(l.status) === 'Proposal Sent'
+  );
+
+  let confidence = 85;
   if (activeLeads.length > 0) {
-    confidence = Math.min(98, Math.max(60, Math.round((proposalLeads.length / activeLeads.length) * 40 + 60)));
+    confidence = Math.min(
+      98,
+      Math.max(60, Math.round((proposalLeads.length / activeLeads.length) * 40 + 60))
+    );
   }
 
-  return {
-    forecast: Math.round(avgRev),
-    confidence
-  };
+  return { forecast: Math.round(avgRev), confidence };
 };
 
-// 13. Top Performers (Won revenue by owner)
+/**
+ * 13. Top Performers (Won revenue grouped by owner, top 5)
+ */
 export const getTopPerformers = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
 
   const ownerRevenues = {};
-
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead || lead.status !== 'Won') return;
     const ownerName = getLeadOwner(lead);
     const value = Number(lead.value) || 0;
@@ -328,55 +347,58 @@ export const getTopPerformers = (leads) => {
   });
 
   return Object.keys(ownerRevenues)
-    .map(name => ({
-      name,
-      revenue: ownerRevenues[name]
-    }))
+    .map((name) => ({ name, revenue: ownerRevenues[name] }))
     .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5); // top 5
+    .slice(0, 5);
 };
 
-// 14. Activity Heatmap Data (Calendar data over the last 6 months)
+/**
+ * 14. Activity Heatmap Data
+ * GitHub-style calendar data – tracks leads created, meetings, and won deals.
+ */
 export const getActivityHeatmapData = (leads) => {
   if (!leads || !Array.isArray(leads)) return [];
 
-  // Track counts per day: 'YYYY-MM-DD' -> count
   const dayCounts = {};
 
-  leads.forEach(lead => {
+  leads.forEach((lead) => {
     if (!lead) return;
-    
-    // 1. Created At event
+
+    // Created At event
     if (lead.createdAt) {
-      dayCounts[lead.createdAt] = (dayCounts[lead.createdAt] || 0) + 1;
+      const dateKey = lead.createdAt.substring(0, 10);
+      dayCounts[dateKey] = (dayCounts[dateKey] || 0) + 1;
     }
-    
-    // 2. Won At event (if won)
+
+    // Won At event (weighted more)
     if (lead.status === 'Won' && lead.wonAt) {
-      dayCounts[lead.wonAt] = (dayCounts[lead.wonAt] || 0) + 1.5; // weight wins more!
+      const dateKey = lead.wonAt.substring(0, 10);
+      dayCounts[dateKey] = (dayCounts[dateKey] || 0) + 1.5;
     } else if (lead.status === 'Won' && lead.createdAt) {
-      // Fallback wonAt calculation (assume won 14 days later)
       const created = new Date(lead.createdAt);
       if (!isNaN(created.getTime())) {
-        const fallbackWonDateStr = new Date(created.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        dayCounts[fallbackWonDateStr] = (dayCounts[fallbackWonDateStr] || 0) + 1.5;
+        const fallback = new Date(created.getTime() + 14 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0];
+        dayCounts[fallback] = (dayCounts[fallback] || 0) + 1.5;
       }
     }
 
-    // 3. Meeting At event (if present)
+    // Meeting At event
     if (lead.meetingAt) {
-      dayCounts[lead.meetingAt] = (dayCounts[lead.meetingAt] || 0) + 1;
+      const dateKey = lead.meetingAt.substring(0, 10);
+      dayCounts[dateKey] = (dayCounts[dateKey] || 0) + 1;
     }
 
-    // 4. Contacted At event (if present)
+    // Contacted At event
     if (lead.contactedAt) {
-      dayCounts[lead.contactedAt] = (dayCounts[lead.contactedAt] || 0) + 0.5;
+      const dateKey = lead.contactedAt.substring(0, 10);
+      dayCounts[dateKey] = (dayCounts[dateKey] || 0) + 0.5;
     }
   });
 
-  // Convert to array of { date, count }
-  return Object.keys(dayCounts).map(date => ({
+  return Object.keys(dayCounts).map((date) => ({
     date,
-    count: Math.round(dayCounts[date])
+    count: Math.round(dayCounts[date]),
   }));
 };

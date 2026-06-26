@@ -5,29 +5,31 @@ import {
   Funnel,
   Cell,
   Tooltip,
-  LabelList
+  LabelList,
 } from 'recharts';
-
-const FUNNEL_COLORS = [
-  '#94A3B8', // New
-  '#2563EB', // Contacted
-  '#F59E0B', // Meeting Scheduled
-  '#7C3AED', // Proposal Sent
-  '#22C55E'  // Won
-];
+import { FUNNEL_COLORS } from '../../constants/analyticsColors';
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-950/95 p-3 shadow-xl backdrop-blur-sm">
-        <p className="text-xs font-bold text-slate-100">{data.name}</p>
-        <p className="text-xs font-semibold mt-1 text-indigo-400">
-          Opportunities: <span className="font-bold">{data.value}</span>
-        </p>
-        <p className="text-[10px] text-slate-500 font-medium">
-          Conversion Rate: {data.percentage}% of initial leads
-        </p>
+      <div className="rounded-xl border border-slate-800 bg-slate-950/95 p-3.5 shadow-xl backdrop-blur-sm min-w-[180px]">
+        <p className="text-xs font-bold text-white">{data.name}</p>
+        <div className="mt-2 space-y-1.5 text-[11px]">
+          <p className="text-slate-400">
+            Opportunities:{' '}
+            <span className="font-bold text-white">{data.value}</span>
+          </p>
+          <p className="text-blue-400 font-medium">
+            Conversion: <span className="font-bold">{data.percentage}%</span> of initial
+          </p>
+          {data.dropOff > 0 && (
+            <p className="text-rose-400 font-medium">
+              Drop-off: <span className="font-bold">−{data.dropOff}</span>{' '}
+              <span className="text-rose-400/70">({data.dropOffPct}%)</span>
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -35,38 +37,42 @@ const CustomTooltip = ({ active, payload }) => {
 };
 
 export default React.memo(function FunnelChartCard({ data }) {
-  const hasData = Array.isArray(data) && data.length > 0 && data[0].value > 0;
+  const hasData =
+    Array.isArray(data) && data.length > 0 && data[0].value > 0;
 
   return (
-    <div className="flex flex-col h-full rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm transition-all duration-200 hover:border-slate-700/80 hover:shadow-md">
+    <div className="flex flex-col h-full rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-sm transition-all duration-200 hover:border-slate-700/80 hover:shadow-md">
       <div className="mb-4">
-        <h3 className="text-sm font-bold text-slate-100">Sales Funnel</h3>
-        <p className="text-xs text-slate-500">Cohort volume and drop-off conversion rates</p>
+        <h3 className="text-sm font-bold text-white">Sales Funnel</h3>
+        <p className="text-xs text-slate-400 mt-1">
+          Cohort volume, conversion rates, and stage drop-offs
+        </p>
       </div>
 
       {!hasData ? (
-        <div className="flex flex-1 items-center justify-center py-12 text-slate-550">
+        <div className="flex flex-1 items-center justify-center py-12 text-slate-500">
           <p className="text-xs">No opportunities to show in funnel</p>
         </div>
       ) : (
-        <div className="h-56 w-full flex-1">
+        <div className="h-60 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <FunnelChart margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+            <FunnelChart margin={{ top: 10, right: 40, left: 10, bottom: 10 }}>
               <Tooltip content={<CustomTooltip />} />
               <Funnel
                 dataKey="value"
                 data={data}
                 isAnimationActive={true}
-                animationDuration={800}
+                animationDuration={900}
+                animationBegin={200}
               >
                 {data.map((entry, index) => (
-                  <Cell 
-                    key={`funnel-cell-${index}`} 
-                    fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} 
+                  <Cell
+                    key={`funnel-cell-${index}`}
+                    fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]}
                     stroke="transparent"
                   />
                 ))}
-                
+
                 <LabelList
                   position="right"
                   fill="#94a3b8"
@@ -75,7 +81,7 @@ export default React.memo(function FunnelChartCard({ data }) {
                   style={{ fontSize: 10, fontWeight: 600 }}
                   width={90}
                 />
-                
+
                 <LabelList
                   position="inside"
                   fill="#ffffff"

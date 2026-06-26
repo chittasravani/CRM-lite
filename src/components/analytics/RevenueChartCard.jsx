@@ -38,7 +38,7 @@ export default React.memo(function RevenueChartCard({ data }) {
           <p className="text-xs">No revenue data to display</p>
         </div>
       ) : (
-        <div className="h-56 w-full flex-1">
+        <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart 
               data={data} 
